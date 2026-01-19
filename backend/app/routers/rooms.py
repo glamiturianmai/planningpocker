@@ -18,7 +18,7 @@ async def websocket_room(websocket: WebSocket, room_id: str):
     await websocket.accept()
     room_connections[room_id].append(websocket)
 
-    db = SessionLocal()  # ✅ ручное открытие сессии
+    db = SessionLocal()
 
     try:
         while True:
@@ -49,6 +49,18 @@ async def websocket_room(websocket: WebSocket, room_id: str):
                     for p in room.players:
                         p.vote = None
                     room.revealed = False
+                    db.commit()
+                    
+            elif "leave" in data:
+                user_id = data["user_id"]
+
+                player = (
+                    db.query(models.Player)
+                    .filter_by(room_id=room_id, user_id=user_id)
+                    .first()
+                )
+                if player:
+                    db.delete(player)
                     db.commit()
 
             room = (

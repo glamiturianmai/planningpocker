@@ -21,7 +21,7 @@ const props = defineProps<{
 
 const values: number[] = [];
 let a = 1, b = 2;
-while (a <= 59) {
+while (a <= 89) {
   values.push(a);
   const next = a + b;
   a = b;
@@ -51,6 +51,15 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+button {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
 }
 
 button:hover:not(:disabled) {

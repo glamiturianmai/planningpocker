@@ -28,12 +28,14 @@ export const useRoomStore = defineStore('roomStore', () => {
   }
 
   async function loadRoom(roomId: string) {
-    const room = await api.fetchRoom(roomId);
-    const index = rooms.value.findIndex(r => r.id === roomId);
-    if (index >= 0) rooms.value[index] = room;
-    else rooms.value.push(room);
-    currentRoomId.value = roomId;
-  }
+  const room = await api.fetchRoom(roomId);
+  const index = rooms.value.findIndex(r => r.id === roomId);
+  if (index >= 0) rooms.value[index] = room;
+  else rooms.value.push(room);
+  currentRoomId.value = roomId;
+  
+  return room;
+}
 
 async function createRoom(name: string, code: string) {
   if (!auth.user) throw new Error('User not logged in');
@@ -110,18 +112,14 @@ async function joinByNameAndCode(name: string, code: string) {
     rooms.value[index] = room;
   }
 
-  function leaveRoom() {
-    currentRoomId.value = null;
-    if (process.client) localStorage.removeItem(LOCAL_ROOM_KEY);
-  }
+function leaveRoom(roomId: string, userId: string) {
+  const room = rooms.value.find(r => r.id === roomId)
+  if (!room) return
 
-  async function updateRoom(updatedRoom: Room) {
-  const index = rooms.value.findIndex(r => r.id === updatedRoom.id);
-  if (index >= 0) rooms.value[index] = updatedRoom;
-  else rooms.value.push(updatedRoom);
+  room.players = room.players.filter(p => p.user_id !== userId)
 
-  if (currentRoomId.value === updatedRoom.id) {
-    currentRoomId.value = updatedRoom.id;
+  if (room.players.length === 0) {
+    rooms.value = rooms.value.filter(r => r.id !== roomId)
   }
 }
 
@@ -139,6 +137,5 @@ async function joinByNameAndCode(name: string, code: string) {
     resetCards,
     leaveRoom,
     joinByNameAndCode,
-    updateRoom,
   };
 });

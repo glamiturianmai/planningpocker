@@ -1,32 +1,8 @@
 <template>
-  <div class="app">
-    <header class="header">
-      <NuxtLink to="/" class="logo">Planning Poker</NuxtLink>
-
-      <div class="user" v-if="auth.isAuthenticated">
-        👤 {{ auth.user?.name }}
-        <button class="logout" @click="logout">Выйти</button>
-      </div>
-    </header>
-
-    <main class="content">
-      <NuxtPage />
-    </main>
-  </div>
+  <NuxtLayout>
+    <NuxtPage />
+  </NuxtLayout>
 </template>
-
-<script setup lang="ts">
-import { useAuthStore } from '@/entities/auth/model/use-auth-store';
-import { useRouter } from 'vue-router';
-
-const auth = useAuthStore();
-const router = useRouter();
-
-function logout() {
-  auth.logout();
-  router.push('/login');
-}
-</script>
 
 <style>
 body { margin: 0; font-family: system-ui, sans-serif; background: #f1f5f9; }

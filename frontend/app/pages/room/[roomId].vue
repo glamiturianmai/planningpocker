@@ -1,6 +1,9 @@
 <template>
   <div v-if="room" class="room-page">
-    <h1 class="room-title">Комната: {{ room.name }}</h1>
+    <div class="room-header">
+      <h1 class="room-title">Комната: {{ room.name }}</h1>
+      <button class="leave-btn" @click="leaveRoom">Выйти из комнаты</button>
+    </div>
 
     <div class="players">
       <div
@@ -14,9 +17,9 @@
         ]"
       >
         <p class="player-name">{{ p.name }}</p>
-       <p class="player-vote">
-        {{ (room.revealed || p.user_id === auth.user?.id) ? formatVote(p.vote) : '-' }}
-      </p>
+        <p class="player-vote">
+          {{ (room.revealed || p.user_id === auth.user?.id) ? formatVote(p.vote) : '?' }}
+        </p>
       </div>
     </div>
 
@@ -45,18 +48,18 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useRoomStore } from '@/entities/room/model/use-room-store';
 import { useAuthStore } from '@/entities/auth/model/use-auth-store';
 import VoteSelector from '@/features/vote/ui/VoteSelector.vue';
 import ResultsPanel from '@/widgets/results/ui/ResultsPanel.vue';
 
 const route = useRoute();
+const router = useRouter();
 const roomStore = useRoomStore();
 const auth = useAuthStore();
 
 const roomId = route.params.roomId as string;
-const room = ref(roomStore.rooms.find(r => r.id === roomId) || null);
 
 let ws: WebSocket | null = null;
 
@@ -93,7 +96,6 @@ const currentPlayer = computed(() => {
   return room.value.players.find(p => p.user_id === auth.user?.id) || null;
 });
 
-const votedCount = computed(() => room.value?.players.filter(p => p.vote !== null).length ?? 0);
 const allVoted = computed(() => room.value?.players.every(p => p.vote !== null) ?? false);
 
 function setVote(value: number) {
@@ -116,25 +118,123 @@ function formatVote(vote: number | null) {
   return Number.isInteger(vote) ? String(vote) : vote.toFixed(1);
 }
 
-onMounted(() => connectWS());
+function leaveRoom() {
+  if (!auth.user || !ws) return;
+
+  sendWS({
+    leave: true,
+    user_id: auth.user.id
+  });
+
+  ws.close();
+
+  router.push('/');
+}
+
+
+const room = ref(null);
+
+async function loadRoomData() {
+  const fromStore = roomStore.rooms.find(r => r.id === roomId);
+  if (fromStore) {
+    room.value = fromStore;
+  } else {
+    try {
+      const fetchedRoom = await roomStore.loadRoom(roomId);
+      room.value = fetchedRoom;
+    } catch (err) {
+      console.error(err);
+      room.value = null;
+    }
+  }
+}
+
+onMounted(() => {
+  connectWS();
+  loadRoomData();
+});
+
 onBeforeUnmount(() => ws?.close());
 </script>
 
 <style scoped>
-.room-page { padding: 20px; max-width: 900px; margin: 0 auto; text-align: center; background: #fafafa; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-.room-title { font-size: 28px; font-weight: bold; margin-bottom: 10px; color: #111827; }
+.room-page {
+  padding: 28px;
+  max-width: 1000px;
+  margin: 60px auto;
+  text-align: center;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(30, 20, 80, 0.08);
+}
 
-.players { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin: 20px 0; }
-.player-card { width: 100px; height: 140px; background: #f3f4f6; border-radius: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; font-weight: bold; box-shadow: 0 2px 6px rgba(0,0,0,0.05); border: 2px solid transparent; transition: transform 0.2s, box-shadow 0.2s, border 0.2s; }
-.player-card.current { background-color: #e8eefe; }
-.player-card.voted { box-shadow: 0 0 8px 2px rgba(16,185,129,0.6); }
-.player-card.notVoted { box-shadow: 0 0 8px 2px rgba(239,68,68,0.6); }
-.player-card .player-name { font-size: 14px; margin-bottom: 10px; color: #111827; text-align: center; }
-.player-card .player-vote { font-size: 24px; color: #111827; }
+.room-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
 
-.control { margin-top: 25px; padding: 12px 28px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; background-color: #3b82f6; color: white; transition: background 0.2s; }
-.control:hover { background-color: #2563eb; }
-.control.ready { background-color: #10b981; }
+.room-title {
+  font-size: 30px;
+  font-weight: 700;
+  background: #4a00e0;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
-.room-not-found { text-align: center; margin-top: 100px; font-size: 18px; color: #6b7280; }
+.leave-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 12px;
+  background:  linear-gradient(135deg, #ede9fe, #f5f3ff);
+  color: #4a00e0;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.players {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 30px 0;
+}
+
+.player-card {
+  width: 110px;
+  height: 150px;
+  background: #f4f5fb;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-weight: 600;
+  border: 2px solid transparent;
+  transition: all 0.25s ease;
+}
+.player-card.current { background: linear-gradient(135deg, #ede9fe, #f5f3ff); transform: translateY(-4px); }
+.player-card.voted { box-shadow: 0 0 0 2px rgb(19, 215, 39,0.35), 0 12px 28px rgba(19, 215, 39,0.2); }
+.player-card.notVoted { box-shadow: 0 0 0 2px rgba(239,68,68,0.35), 0 12px 28px rgba(239,68,68,0.2); }
+
+.player-name { font-size: 14px; margin-bottom: 12px; color: #2c2c3a; text-align: center; opacity: 0.85; }
+.player-vote { font-size: 26px; font-weight: 700; color: #2c2c3a; }
+
+.control {
+  margin-top: 36px;
+  padding: 14px 36px;
+  font-size: 16px;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  background: #4a00e0;
+  color: white;
+  font-weight: 600;
+  transition: all 0.25s ease;
+}
+.control:hover { transform: translateY(-2px); }
+
+.room-not-found { text-align: center; margin-top: 120px; font-size: 18px; color: #6b6b85; }
 </style>

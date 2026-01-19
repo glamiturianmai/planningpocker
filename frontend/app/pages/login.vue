@@ -40,6 +40,7 @@ async function doLogin() {
   }
 }
 
+
 async function doRegister() {
   error.value = '';
   try {
@@ -54,108 +55,88 @@ async function doRegister() {
 
 <style scoped>
 .login-page {
-  max-width: 400px;
-  margin: 100px auto;
-  background: white;
-  padding: 30px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-width: 420px;
+  margin: 120px auto;
+  background: #ffffff;
+  padding: 32px 28px 36px;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(30, 20, 80, 0.08);
 }
 
 .tabs {
   display: flex;
-  margin-bottom: 20px;
+  gap: 8px;
+  margin-bottom: 28px;
+  background: #f4f5fb;
+  padding: 6px;
+  border-radius: 16px;
 }
 
 .tabs button {
   flex: 1;
-  padding: 10px;
+  padding: 10px 0;
   border: none;
-  background: #f1f5f9;
   cursor: pointer;
-  border-radius: 8px 8px 0 0;
-  font-weight: bold;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  background: transparent;
+  color: #5b5b75;
+  transition: all 0.25s ease;
 }
 
 .tabs button.active {
-  background: #4caf50;
+  background: #4a00e0;
   color: white;
+  box-shadow: 0 8px 20px rgba(74,0,224,0.35);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .form input {
-  display: block;
   width: 100%;
-  margin-bottom: 12px;
-  padding: 10px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e3f0;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+  background: #fafbff;
+}
+
+.form input:focus {
+  border-color: #8e2de2;
+  box-shadow: 0 0 0 2px rgba(142,45,226,0.15);
+  background: #ffffff;
 }
 
 .form button {
-  width: 100%;
-  padding: 10px;
-  border-radius: 6px;
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 14px;
   border: none;
-  background: #4caf50;
-  color: white;
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
+  color: white;
+  background: #4a00e0;
+  transition: all 0.25s ease;
 }
 
 .form button:hover {
-  background: #43a047;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(74,0,224,0.35);
 }
 
 .error {
-  color: red;
   margin-top: 10px;
+  font-size: 14px;
+  color: #ef4444;
   text-align: center;
 }
 
-.users-list {
-  margin-top: 20px;
-  text-align: left;
-  background: #f1f5f9;
-  padding: 10px;
-  border-radius: 6px;
-  overflow-y: auto;
-}
-
-.users-list ul {
-  list-style: none;
-  padding-left: 10px;
-}
-
-.users-list li {
-  padding: 4px 0;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.users-list {
-  margin-top: 20px;
-  text-align: left;
-}
-
-.users-list table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #f1f5f9;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.users-list th, .users-list td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #e2e8f0;
-  text-align: left;
-}
-
-.users-list th {
-  background: #334155;
-  color: white;
-  font-weight: normal;
-}
-
-.users-list tbody tr:hover {
-  background: #e2e8f0;
-}
 </style>
