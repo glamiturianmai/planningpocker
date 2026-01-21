@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import * as api from '../../../api/auth';
+import { useAuthApi } from '../../../api/auth';
 
 const TOKEN_KEY = 'pp-token';
 const USER_KEY = 'pp-user';
 
 export const useAuthStore = defineStore('authStore', () => {
+  const { loginApi, registerApi } = useAuthApi()
+
   const token = ref<string | null>(process.client ? localStorage.getItem(TOKEN_KEY) : null);
   const user = ref<{ id: string; name: string } | null>(
     process.client ? JSON.parse(localStorage.getItem(USER_KEY) || 'null') : null
@@ -14,7 +16,7 @@ export const useAuthStore = defineStore('authStore', () => {
   const isAuthenticated = computed(() => !!token.value);
 
   async function login(name: string, password: string) {
-    const res = await api.login(name, password);
+    const res = await loginApi(name, password);
     token.value = res.token;
     user.value = res.user;
     if (process.client) {
@@ -24,7 +26,7 @@ export const useAuthStore = defineStore('authStore', () => {
   }
 
   async function register(name: string, password: string) {
-    const res = await api.register(name, password);
+    const res = await registerApi(name, password);
     token.value = res.token;
     user.value = res.user;
     if (process.client) {

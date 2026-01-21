@@ -18,7 +18,9 @@
       >
         <p class="player-name">{{ p.name }}</p>
         <p class="player-vote">
-          {{ (room.revealed || p.user_id === auth.user?.id) ? formatVote(p.vote) : '?' }}
+          {{ (room.revealed || p.user_id === auth.user?.id)
+            ? formatVote(p.vote)
+            : '?' }}
         </p>
       </div>
     </div>
@@ -30,7 +32,10 @@
       @select="setVote"
     />
 
-    <ResultsPanel :players="room.players" :revealed="room.revealed" />
+    <ResultsPanel
+      :players="room.players"
+      :revealed="room.revealed"
+    />
 
     <button
       class="control"
@@ -47,115 +52,92 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useRoomStore } from '@/entities/room/model/use-room-store';
-import { useAuthStore } from '@/entities/auth/model/use-auth-store';
-import VoteSelector from '@/features/vote/ui/VoteSelector.vue';
-import ResultsPanel from '@/widgets/results/ui/ResultsPanel.vue';
+import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useRoomStore } from '@/entities/room/model/use-room-store'
+import { useAuthStore } from '@/entities/auth/model/use-auth-store'
+import { useRoomsApi } from '@/api/rooms'
 
-const route = useRoute();
-const router = useRouter();
-const roomStore = useRoomStore();
-const auth = useAuthStore();
+import VoteSelector from '@/features/vote/ui/VoteSelector.vue'
+import ResultsPanel from '@/widgets/results/ui/ResultsPanel.vue'
 
-const roomId = route.params.roomId as string;
+const route = useRoute()
+const router = useRouter()
 
-let ws: WebSocket | null = null;
+const roomStore = useRoomStore()
+const auth = useAuthStore()
 
-function connectWS() {
-  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${protocol}://${location.hostname}:8000/rooms/ws/${roomId}`);
+const {
+  connectRoomWSApi,
+  sendVoteApi,
+  sendRevealApi,
+  sendResetApi,
+} = useRoomsApi()
 
-  ws.onopen = () => console.log('Connected to room WS');
+const roomId = route.params.roomId as string
 
-  ws.onmessage = event => {
-    try {
-      const data = JSON.parse(event.data);
-      room.value = data;
-      roomStore.updateRoom(data);
-    } catch (e) {
-      console.error('Invalid WS message', e);
-    }
-  };
+let ws: WebSocket | null = null
 
-  ws.onclose = () => console.log('Disconnected from WS');
-  ws.onerror = e => console.error('WS error', e);
-}
-
-function sendWS(payload: object) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
-  } else {
-    console.warn('WS not ready', payload);
-  }
-}
+const room = computed(() => roomStore.currentRoom)
 
 const currentPlayer = computed(() => {
-  if (!room.value || !auth.user) return null;
-  return room.value.players.find(p => p.user_id === auth.user?.id) || null;
-});
+  if (!room.value || !auth.user) return null
+  return room.value.players.find(p => p.user_id === auth.user!.id) || null
+})
 
-const allVoted = computed(() => room.value?.players.every(p => p.vote !== null) ?? false);
+const allVoted = computed(() =>
+  room.value?.players.every(p => p.vote !== null) ?? false
+)
+
+function connectWS() {
+  ws = connectRoomWSApi(roomId, (room) => {
+    roomStore.updateRoom(room)
+  })
+}
 
 function setVote(value: number) {
-  if (!currentPlayer.value || room.value?.revealed) return;
-  sendWS({ vote: value, user_id: auth.user!.id });
+  if (!ws || !auth.user || room.value?.revealed) return
+  sendVoteApi(ws, auth.user.id, value)
 }
 
 function revealCards() {
-  if (!room.value) return;
-  sendWS({ reveal: true });
+  if (!ws) return
+  sendRevealApi(ws)
 }
 
 function resetCards() {
-  if (!room.value) return;
-  sendWS({ reset: true });
-}
-
-function formatVote(vote: number | null) {
-  if (vote === null) return '-';
-  return Number.isInteger(vote) ? String(vote) : vote.toFixed(1);
+  if (!ws) return
+  sendResetApi(ws)
 }
 
 function leaveRoom() {
-  if (!auth.user || !ws) return;
+  if (!ws || !auth.user) return
 
-  sendWS({
+  ws.send(JSON.stringify({
     leave: true,
     user_id: auth.user.id
-  });
+  }))
 
-  ws.close();
-
-  router.push('/');
+  ws.close()
+  roomStore.currentRoomId = null
+  router.push('/')
 }
 
-
-const room = ref(null);
-
-async function loadRoomData() {
-  const fromStore = roomStore.rooms.find(r => r.id === roomId);
-  if (fromStore) {
-    room.value = fromStore;
-  } else {
-    try {
-      const fetchedRoom = await roomStore.loadRoom(roomId);
-      room.value = fetchedRoom;
-    } catch (err) {
-      console.error(err);
-      room.value = null;
-    }
-  }
+function formatVote(vote: number | null) {
+  if (vote === null) return '-'
+  return Number.isInteger(vote) ? String(vote) : vote.toFixed(1)
 }
 
-onMounted(() => {
-  connectWS();
-  loadRoomData();
-});
+onMounted(async () => {
+  await roomStore.loadRoom(roomId)
+  connectWS()
+})
 
-onBeforeUnmount(() => ws?.close());
+onBeforeUnmount(() => {
+  ws?.close()
+})
 </script>
+
 
 <style scoped>
 .room-page {

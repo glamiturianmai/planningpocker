@@ -3,43 +3,36 @@
     <h1 class="title">Planning Poker</h1>
 
     <div class="mode-switch">
-  <div
-    class="mode-pill"
-    :class="{ active: activeTab === 'join' }"
-    @click="activeTab = 'join'"
-  >
-    Войти
-  </div>
-  <div
-    class="mode-pill"
-    :class="{ active: activeTab === 'create' }"
-    @click="activeTab = 'create'"
-  >
-    Создать
-  </div>
-</div>
+      <div
+        class="mode-pill"
+        :class="{ active: activeTab === 'join' }"
+        @click="activeTab = 'join'"
+      >
+        Войти
+      </div>
+      <div
+        class="mode-pill"
+        :class="{ active: activeTab === 'create' }"
+        @click="activeTab = 'create'"
+      >
+        Создать
+      </div>
+    </div>
 
-<div class="form">
-  <input v-model="name" placeholder="Название комнаты" />
-  <input v-model="code" placeholder="Код доступа" />
+    <div class="form">
+      <input v-model="name" placeholder="Название комнаты" />
+      <input v-model="code" placeholder="Код доступа" />
 
-  <button
-    class="primary"
-    @click="activeTab === 'join' ? joinRoom() : createRoom()"
-  >
-    {{ activeTab === 'join'
-      ? 'Войти в комнату'
-      : 'Создать комнату'
-    }}
-  </button>
+      <button class="primary" @click="activeTab === 'join' ? joinRoom() : createRoom()">
+        {{ activeTab === 'join' ? 'Войти в комнату' : 'Создать комнату' }}
+      </button>
 
-  <p class="error" v-if="error">{{ error }}</p>
-</div>
+      <p class="error" v-if="error">{{ error }}</p>
+    </div>
 
-
-    <!-- Ваши комнаты -->
     <div v-if="auth.user && myRooms.length" class="my-rooms">
       <h3>Ваши комнаты</h3>
+
       <div class="rooms-list">
         <div class="room-card" v-for="room in myRooms" :key="room.id">
           <div class="room-info">
@@ -52,6 +45,7 @@
     </div>
   </div>
 </template>
+
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
@@ -68,17 +62,6 @@ const name = ref('')
 const code = ref('')
 const error = ref('')
 
-let ws: WebSocket | null = null
-
-function connectWS(roomId: string) {
-  ws = new WebSocket(`ws://127.0.0.1:8000/rooms/ws/${roomId}`)
-  ws.onmessage = event => roomStore.updateRoom(JSON.parse(event.data))
-}
-
-function sendWS(payload: object) {
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload))
-}
-
 onMounted(async () => {
   try {
     await roomStore.loadRooms()
@@ -89,10 +72,14 @@ onMounted(async () => {
 
 async function createRoom() {
   error.value = ''
-  if (!name.value || !code.value) return
+  if (!name.value || !code.value) {
+    error.value = 'Введите название и код'
+    return
+  }
+
   try {
-    const id = await roomStore.createRoom(name.value, code.value)
-    enterRoom(id)
+    const roomId = await roomStore.createRoom(name.value, code.value)
+    router.push(`/room/${roomId}`)
   } catch (e: any) {
     error.value = e.message || 'Ошибка создания комнаты'
   }
@@ -100,10 +87,14 @@ async function createRoom() {
 
 async function joinRoom() {
   error.value = ''
-  if (!name.value || !code.value) return
+  if (!name.value || !code.value) {
+    error.value = 'Введите название и код'
+    return
+  }
+
   try {
     const room = await roomStore.joinByNameAndCode(name.value, code.value)
-    enterRoom(room.id)
+    router.push(`/room/${room.id}`)
   } catch {
     error.value = 'Комната не найдена или неверный код'
   }
@@ -117,10 +108,10 @@ const myRooms = computed(() => {
 })
 
 function enterRoom(roomId: string) {
-  connectWS(roomId)
   router.push(`/room/${roomId}`)
 }
 </script>
+
 <style scoped>
 
 .mode-switch {

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import type { Room, Player } from '../../../api/rooms';
-import * as api from '../../../api/rooms';
+import { useRoomsApi } from '../../../api/rooms';
 import { useAuthStore } from '@/entities/auth/model/use-auth-store';
 
 const LOCAL_ROOM_KEY = 'planning-poker-current-room';
@@ -10,6 +10,8 @@ export const useRoomStore = defineStore('roomStore', () => {
   const auth = useAuthStore();
   const rooms = ref<Room[]>([]);
   const currentRoomId = ref<string | null>(null);
+
+  const { fetchRoomsApi, fetchRoomApi, createRoomApi, joinRoomApi, sendVoteApi, sendRevealApi, sendResetApi } = useRoomsApi()
 
   if (process.client) {
     const saved = localStorage.getItem(LOCAL_ROOM_KEY);
@@ -24,11 +26,11 @@ export const useRoomStore = defineStore('roomStore', () => {
   const publicRooms = computed(() => rooms.value);
 
   async function loadRooms() {
-    rooms.value = await api.fetchRooms();
+    rooms.value = await fetchRoomsApi();
   }
 
   async function loadRoom(roomId: string) {
-  const room = await api.fetchRoom(roomId);
+  const room = await fetchRoomApi(roomId);
   const index = rooms.value.findIndex(r => r.id === roomId);
   if (index >= 0) rooms.value[index] = room;
   else rooms.value.push(room);
@@ -40,7 +42,7 @@ export const useRoomStore = defineStore('roomStore', () => {
 async function createRoom(name: string, code: string) {
   if (!auth.user) throw new Error('User not logged in');
 
-  const room = await api.createRoom(
+  const room = await createRoomApi(
     name,
     code,
     auth.user.id,
@@ -68,7 +70,7 @@ function normalizeRoom(room: Room): Room {
 async function joinRoom(roomId: string) {
   if (!auth.user) throw new Error('User not logged in');
 
-  const room = await api.joinRoom(roomId, auth.user.id, auth.user.name);
+  const room = await joinRoomApi(roomId, auth.user.id, auth.user.name);
   const index = rooms.value.findIndex(r => r.id === roomId);
   if (index >= 0) rooms.value[index] = normalizeRoom(room);
   else rooms.value.push(normalizeRoom(room));
@@ -77,7 +79,7 @@ async function joinRoom(roomId: string) {
 }
 
 async function joinByNameAndCode(name: string, code: string) {
-  const freshRooms = await api.fetchRooms();
+  const freshRooms = await fetchRoomsApi();
   rooms.value = freshRooms.map(normalizeRoom);
 
   const room = rooms.value.find(r => r.name === name && r.code === code);
@@ -88,29 +90,6 @@ async function joinByNameAndCode(name: string, code: string) {
   return rooms.value.find(r => r.id === room.id)!;
 }
 
-
-
-
-  async function setVote(value: number) {
-    if (!currentRoom.value || !auth.user) return;
-    const room = await api.vote(currentRoom.value.id, auth.user.id, value);
-    const index = rooms.value.findIndex(r => r.id === room.id);
-    rooms.value[index] = room;
-  }
-
-  async function revealCards() {
-    if (!currentRoom.value) return;
-    const room = await api.reveal(currentRoom.value.id);
-    const index = rooms.value.findIndex(r => r.id === room.id);
-    rooms.value[index] = room;
-  }
-
-  async function resetCards() {
-    if (!currentRoom.value) return;
-    const room = await api.reset(currentRoom.value.id);
-    const index = rooms.value.findIndex(r => r.id === room.id);
-    rooms.value[index] = room;
-  }
 
 function leaveRoom(roomId: string, userId: string) {
   const room = rooms.value.find(r => r.id === roomId)
@@ -123,6 +102,17 @@ function leaveRoom(roomId: string, userId: string) {
   }
 }
 
+function updateRoom(room: Room) {
+  const index = rooms.value.findIndex(r => r.id === room.id)
+  if (index >= 0) {
+    rooms.value[index] = normalizeRoom(room)
+  } else {
+    rooms.value.push(normalizeRoom(room))
+  }
+
+  currentRoomId.value = room.id
+}
+
   return {
     rooms,
     currentRoomId,
@@ -132,9 +122,7 @@ function leaveRoom(roomId: string, userId: string) {
     loadRoom,
     createRoom,
     joinRoom,
-    setVote,
-    revealCards,
-    resetCards,
+    updateRoom,
     leaveRoom,
     joinByNameAndCode,
   };
