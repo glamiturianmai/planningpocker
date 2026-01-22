@@ -10,7 +10,7 @@ app = FastAPI(title="Planning Poker API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "https://vercel.com/alices-projects-db8d1569/planningpocker/FxyoB1kFFNzBeaFgkZhj25gfWQe7"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
