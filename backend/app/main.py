@@ -8,9 +8,14 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Planning Poker API")
 
+origins = [
+    "http://localhost:3000",
+    "https://planningpocker.vercel.app"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://vercel.com/alices-projects-db8d1569/planningpocker/FxyoB1kFFNzBeaFgkZhj25gfWQe7"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
