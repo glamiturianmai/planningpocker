@@ -10,6 +10,7 @@ app = FastAPI(title="Planning Poker API")
 
 origins = [
     "http://localhost:3000",
+    "http://45.12.229.82:3000",
     "https://planningpocker.vercel.app"
 ]
 
