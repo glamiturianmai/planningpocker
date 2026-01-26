@@ -3,16 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import engine
 from .models import Base
 from .routers import auth, rooms
+import os
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Planning Poker API")
 
-origins = [
-    "http://localhost:3000",
-    "http://45.12.229.82:3000",
-    "https://planningpocker.vercel.app"
-]
+cors_origins = os.getenv("CORS_ORIGINS", "")
+origins = [origin.strip() for origin in cors_origins.split(",") if origin]
 
 app.add_middleware(
     CORSMiddleware,
