@@ -1,88 +1,119 @@
+from collections import defaultdict
+from uuid import UUID
+
+from emoji import is_emoji
+
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session, selectinload
-from uuid import UUID
-from collections import defaultdict
 
-from ..database import get_db
 from .. import models, schemas
+from ..database import SessionLocal, get_db
 
 router = APIRouter(prefix="/rooms", tags=["Rooms"])
-
 room_connections: dict[str, list[WebSocket]] = defaultdict(list)
+MAX_VOTE = 2_147_483_647
 
 
-from ..database import SessionLocal
+def disconnect_room(room_id: str, connection: WebSocket):
+    connections = room_connections.get(room_id, [])
+    if connection in connections:
+        connections.remove(connection)
+    if not connections:
+        room_connections.pop(room_id, None)
+
+
+async def broadcast_room(room_id: str, data: dict):
+    for connection in tuple(room_connections.get(room_id, [])):
+        try:
+            await connection.send_json(data)
+        except (WebSocketDisconnect, RuntimeError, OSError):
+            disconnect_room(room_id, connection)
+
+
+def room_snapshot(db: Session, room_id: UUID) -> dict:
+    room = db.query(models.Room).options(selectinload(models.Room.players)).filter_by(id=room_id).first()
+    if not room:
+        raise HTTPException(404, "Room not found")
+    return schemas.RoomOut.model_validate(room).model_dump(mode="json")
+
+
+def apply_room_command(db: Session, room_id: UUID, data: dict):
+    if "vote" in data:
+        vote = data["vote"]
+        if type(vote) is not int or not 0 <= vote <= MAX_VOTE:
+            raise ValueError(f"Введите целое число от 0 до {MAX_VOTE}")
+        player = db.query(models.Player).filter_by(room_id=room_id, user_id=UUID(data["user_id"])).first()
+        if player:
+            player.vote = vote
+    elif "reveal" in data:
+        db.query(models.Room).filter_by(id=room_id).first().revealed = True
+    elif "reset" in data:
+        room = db.query(models.Room).filter_by(id=room_id).first()
+        for player in room.players:
+            player.vote = None
+        room.revealed = False
+    elif "leave" in data:
+        player = db.query(models.Player).filter_by(room_id=room_id, user_id=UUID(data["user_id"])).first()
+        if player:
+            db.delete(player)
+    else:
+        raise ValueError("Неизвестная команда комнаты")
+    db.commit()
+
+
+def execute_room_message(db: Session, room_id: UUID, data: dict) -> dict:
+    if not isinstance(data, dict):
+        raise ValueError("Ожидается сообщение комнаты")
+    if "reaction" not in data:
+        apply_room_command(db, room_id, data)
+        return room_snapshot(db, room_id)
+
+    snapshot = room_snapshot(db, room_id)
+    player_ids = {player["user_id"] for player in snapshot["players"]}
+    reaction = data.get("reaction")
+    if not isinstance(reaction, str) or not is_emoji(reaction.replace("\ufe0f", "")) or data.get("user_id") not in player_ids:
+        raise ValueError("Неизвестная реакция или участник")
+    if data.get("target_user_id") is not None and data["target_user_id"] not in player_ids:
+        raise ValueError("Участник уже вышел из комнаты")
+    side = data.get("side", "left")
+    if side not in ("left", "right"):
+        raise ValueError("Неизвестная сторона броска")
+    return {
+        "side": side,
+        "style": "throw",
+        "type": "reaction", "emoji": data["reaction"],
+        "user_id": data["user_id"], "target_user_id": data.get("target_user_id"),
+    }
+
+
+async def receive_room_message(websocket: WebSocket, room_id: UUID):
+    try:
+        data = await websocket.receive_json()
+        with SessionLocal() as db:
+            event = execute_room_message(db, room_id, data)
+    except (ValueError, KeyError, TypeError) as error:
+        await websocket.send_json({"type": "error", "message": str(error)})
+        return
+    await broadcast_room(str(room_id), event)
+
 
 @router.websocket("/ws/{room_id}")
-async def websocket_room(websocket: WebSocket, room_id: str):
+async def websocket_room(websocket: WebSocket, room_id: UUID):
     await websocket.accept()
-    room_connections[room_id].append(websocket)
-
-    db = SessionLocal()
-
+    room_key = str(room_id)
+    room_connections[room_key].append(websocket)
     try:
+        with SessionLocal() as db:
+            initial_state = room_snapshot(db, room_id)
+        await broadcast_room(room_key, initial_state)
         while True:
-            data = await websocket.receive_json()
-
-            if "vote" in data:
-                user_id = data["user_id"]
-                vote = data["vote"]
-
-                player = (
-                    db.query(models.Player)
-                    .filter_by(room_id=room_id, user_id=user_id)
-                    .first()
-                )
-                if player:
-                    player.vote = vote
-                    db.commit()
-
-            elif "reveal" in data:
-                room = db.query(models.Room).filter_by(id=room_id).first()
-                if room:
-                    room.revealed = True
-                    db.commit()
-
-            elif "reset" in data:
-                room = db.query(models.Room).filter_by(id=room_id).first()
-                if room:
-                    for p in room.players:
-                        p.vote = None
-                    room.revealed = False
-                    db.commit()
-                    
-            elif "leave" in data:
-                user_id = data["user_id"]
-
-                player = (
-                    db.query(models.Player)
-                    .filter_by(room_id=room_id, user_id=user_id)
-                    .first()
-                )
-                if player:
-                    db.delete(player)
-                    db.commit()
-
-            room = (
-                db.query(models.Room)
-                .options(selectinload(models.Room.players))
-                .filter_by(id=room_id)
-                .first()
-            )
-            room_out = schemas.RoomOut.model_validate(room)
-            room_data = room_out.model_dump(mode="json")
-
-            for conn in room_connections[room_id]:
-                await conn.send_json(room_data)
-
-
+            await receive_room_message(websocket, room_id)
     except WebSocketDisconnect:
-        room_connections[room_id].remove(websocket)
-
+        pass
+    except HTTPException:
+        await websocket.close(code=1008, reason="Room not found")
     finally:
-        db.close()
-
-
+        disconnect_room(room_key, websocket)
 
 
 @router.post("/", response_model=schemas.RoomOut)

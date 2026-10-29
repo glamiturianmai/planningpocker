@@ -12,3 +12,6 @@ frontend/.env
 
 # Общие
 .DS_Store
+.env
+.env.*
+!.env.example

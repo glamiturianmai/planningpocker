@@ -4,7 +4,6 @@ export type Player = {
   name: string
   vote: number | null
 }
-
 export type Room = {
   id: string
   name: string
@@ -12,113 +11,98 @@ export type Room = {
   players: Player[]
   revealed: boolean
 }
+export type ReactionEvent = {
+  type: 'reaction'
+  style?: 'throw'
+  side?: 'left' | 'right'
+  emoji: string
+  user_id: string
+  target_user_id?: string | null
+}
+export const MAX_VOTE = 2_147_483_647
+export const REACTIONS = ['🐸', '✈️', '📄', '❤️', '🐱'] as const
 
 export function useRoomsApi() {
   const config = useRuntimeConfig()
-  const API_URL = config.public.apiUrl
+  const API_URL = config.public.apiUrl.replace(/\/$/, '')
 
-  async function fetchRoomsApi(): Promise<Room[]> {
-    const res = await fetch(`${API_URL}/rooms`)
-    return res.json()
+  function fetchRoomsApi() {
+    return $fetch<Room[]>(`${API_URL}/rooms/`)
   }
-
-  async function fetchRoomApi(roomId: string): Promise<Room> {
-    const res = await fetch(`${API_URL}/rooms/${roomId}`)
-    return res.json()
+  function fetchRoomApi(roomId: string) {
+    return $fetch<Room>(`${API_URL}/rooms/${roomId}`)
   }
-
-  async function createRoomApi(
-    name: string,
-    code: string,
-    userId?: string,
-    userName?: string
-  ): Promise<Room> {
-    const body: any = { name, code }
-
-    if (userId && userName) {
-      body.user_id = userId
-      body.user_name = userName
-    }
-
-    const res = await fetch(`${API_URL}/rooms`, {
+  function createRoomApi(name: string, code: string, userId?: string, userName?: string) {
+    return $fetch<Room>(`${API_URL}/rooms/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: { name, code, user_id: userId, user_name: userName },
     })
-
-    return res.json()
   }
-
-  async function joinRoomApi(
-    roomId: string,
-    userId: string,
-    name: string
-  ): Promise<Room> {
-    const res = await fetch(`${API_URL}/rooms/${roomId}/join`, {
+  function joinRoomApi(roomId: string, userId: string, name: string) {
+    return $fetch<Room>(`${API_URL}/rooms/${roomId}/join`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, name }),
+      body: { user_id: userId, name },
     })
-
-    return res.json()
   }
-
-  /* ================= WebSocket ================= */
-
   function connectRoomWSApi(
     roomId: string,
     onMessage: (room: Room) => void,
     onOpen?: () => void,
-    onClose?: () => void
+    onClose?: () => void,
+    onReaction?: (reaction: ReactionEvent) => void,
+    onError?: (message: string) => void,
   ): WebSocket {
-    const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws'
-    const wsHost = API_URL.replace(/^https?:\/\//, '')
-    const ws = new WebSocket(`${wsProtocol}://${wsHost}/rooms/ws/${roomId}`)
-
-    ws.onopen = () => {
-      console.log(`WS connected to room ${roomId}`)
-      onOpen?.()
-    }
-
+    const url = new URL(`${API_URL}/rooms/ws/${roomId}`)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(url)
+    ws.onopen = () => onOpen?.()
+    ws.onclose = () => onClose?.()
+    ws.onerror = () => onError?.('Соединение с комнатой потеряно. Обновите страницу.')
     ws.onmessage = (event) => {
       try {
-        const data: Room = JSON.parse(event.data)
+        const data = JSON.parse(event.data) as
+          Room | ReactionEvent | { type: 'error'; message: string }
+        if ('type' in data) {
+          if (data.type === 'reaction') onReaction?.(data)
+          else onError?.(data.message)
+          return
+        }
         onMessage(data)
-      } catch (e) {
-        console.error('Invalid WS message', e)
+      } catch {
+        onError?.('Не удалось прочитать обновление комнаты')
       }
     }
-
-    ws.onclose = () => {
-      console.log(`WS disconnected from room ${roomId}`)
-      onClose?.()
-    }
-
-    ws.onerror = (err) => {
-      console.error('WebSocket error:', err)
-    }
-
     return ws
   }
-
+  function send(ws: WebSocket, message: Record<string, unknown>) {
+    if (ws.readyState !== WebSocket.OPEN) return false
+    ws.send(JSON.stringify(message))
+    return true
+  }
   function sendVoteApi(ws: WebSocket, userId: string, vote: number) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ vote, user_id: userId }))
-    }
+    return send(ws, { vote, user_id: userId })
   }
-
   function sendRevealApi(ws: WebSocket) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ reveal: true }))
-    }
+    return send(ws, { reveal: true })
   }
-
   function sendResetApi(ws: WebSocket) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ reset: true }))
-    }
+    return send(ws, { reset: true })
   }
-
+  function sendLeaveApi(ws: WebSocket, userId: string) {
+    return send(ws, { leave: true, user_id: userId })
+  }
+  let nextReactionSide: 'left' | 'right' = 'left'
+  function sendReactionApi(ws: WebSocket, userId: string, emoji: string, targetUserId?: string) {
+    const sent = send(ws, {
+      side: nextReactionSide,
+      reaction: emoji,
+      user_id: userId,
+      target_user_id: targetUserId,
+      style: 'throw',
+    })
+    if (sent) nextReactionSide = nextReactionSide === 'left' ? 'right' : 'left'
+    return sent
+  }
   return {
     fetchRoomsApi,
     fetchRoomApi,
@@ -128,5 +112,7 @@ export function useRoomsApi() {
     sendVoteApi,
     sendRevealApi,
     sendResetApi,
+    sendLeaveApi,
+    sendReactionApi,
   }
 }
